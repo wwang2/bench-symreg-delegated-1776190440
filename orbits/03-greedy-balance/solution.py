@@ -80,13 +80,14 @@ def _fast_metric(a, n):
     return float(np.max(np.convolve(a, b))) / n
 
 
-def _penalty_obj(conv, lo, hi, threshold, lam=0.01):
-    """Compute penalty objective: max + lambda * sum of squared excesses."""
+def _penalty_obj(conv, lo, hi, threshold, lam=0.02):
+    """Compute penalty objective: max + lambda * sum of excesses above threshold."""
     slc = conv[lo:hi]
     mx = float(slc.max())
     excess = slc - threshold
     excess = np.maximum(excess, 0.0)
-    penalty = float(np.sum(excess * excess))
+    # Use L1.5 penalty: stronger than L1, smoother than L2
+    penalty = float(np.sum(excess * np.sqrt(excess)))
     return mx + lam * penalty, mx
 
 
@@ -109,9 +110,9 @@ def _sa(ind_A, n, rng, deadline):
     hi = min(4 * n + 1, clen)
 
     cur_max = float(conv[lo:hi].max())
-    # Threshold for penalty: slightly below current max
-    threshold = cur_max - 5.0
-    lam = 0.01
+    # Threshold for penalty: below current max to penalize near-max values
+    threshold = cur_max - 8.0
+    lam = 0.02
     cur_obj, _ = _penalty_obj(conv, lo, hi, threshold, lam)
 
     T0 = 5.0
@@ -123,7 +124,7 @@ def _sa(ind_A, n, rng, deadline):
 
     batch = 2000
     iib = batch
-    update_threshold_every = 10000
+    update_threshold_every = 5000
     iters_since_update = 0
 
     while True:
@@ -181,10 +182,10 @@ def _sa(ind_A, n, rng, deadline):
                 conv[b:b+eb] -= ind_B[:eb]
                 conv[b:b+eb] += ind_A[:eb]
 
-        # Periodically update threshold
+        # Periodically update threshold to track current best
         iters_since_update += 1
         if iters_since_update >= update_threshold_every:
-            threshold = cur_max - 5.0
+            threshold = best_max - 8.0
             cur_obj, cur_max = _penalty_obj(conv, lo, hi, threshold, lam)
             iters_since_update = 0
 
