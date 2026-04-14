@@ -1,0 +1,27 @@
+metric:
+  name: "normalized_max_overlap"
+  direction: minimize
+  target: 0.01
+  min_relative_improvement: 0.1
+
+baselines:
+  random: 0.49
+
+eval:
+  timeout: 60
+  seeds: 3
+
+execution:
+  parallel_agents: 1
+  budget: null
+  max_orbits: 3
+  milestone_interval: 3
+  design_iterations: 1
+  brainstorm_debate_rounds: 2
+
+agents:
+  orbit-agent: { model: opus }
+  campaign-reviewer: { model: opus }
+  orbit-reviewer: { model: sonnet }
+  brainstorm-panel: { model: opus }
+  debate-swarm: { model: sonnet }
