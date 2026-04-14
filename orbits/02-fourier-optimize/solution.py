@@ -1,15 +1,9 @@
 """
-Erdos Minimum Overlap — SA with sum-of-top-k objective.
+Erdos Minimum Overlap — SA with sum-of-top-K objective.
 
-Key insight: using max(r) as the SA objective creates local minima
-at ~0.404 because reducing one peak just raises another (whack-a-mole).
-
-Using sum-of-top-K values as the objective forces the SA to flatten
-ALL peaks simultaneously. With K=50, this reduces metric from 0.404
-to 0.395 even with fewer iterations (due to higher per-step cost).
-
-The temperature must be scaled to account for the larger objective
-values (sum of K values vs single max).
+The sum-of-top-K objective (K=50) avoids the "whack-a-mole" problem
+by penalizing all peaks simultaneously. This reduces metric from
+~0.404 (single-max SA) to ~0.393.
 """
 import numpy as np
 import time
@@ -34,8 +28,7 @@ def solve(n, seed=42):
         r[:min(len(c), r_size)] = c[:r_size]
         return r
 
-    # Parameters
-    TOP_K = 50  # number of top values to sum for objective
+    TOP_K = 50
 
     perm = rng.permutation(size) + 1
     A = np.sort(perm[:n]).astype(np.int32)
@@ -51,9 +44,7 @@ def solve(n, seed=42):
 
     current_score = compute_score(r)
 
-    # Temperature scaled for the larger objective range
-    # Delta for single swap is ~TOP_K times larger than with max alone
-    T_start = 100.0    # higher to account for larger deltas
+    T_start = 100.0
     T_end = 0.01
     batch = 5000
 
