@@ -1,11 +1,14 @@
-"""Erdos Minimum Overlap: SA with adaptive penalty schedule.
+"""Erdos Minimum Overlap: SA with adaptive penalty-based objective.
 
-The penalty weight increases over time:
-- Early: low lambda -> explore broadly, reduce overall overlap
-- Late: high lambda -> focus on flattening near the max
+The key innovation: instead of minimizing just max(conv), we use a smooth
+penalty function that penalizes all values above a sliding threshold. The
+penalty weight (lambda) and threshold margin both adapt over time:
 
-Penalty: sum of squared excesses above a threshold set relative to the best max.
-Threshold tracks best_max - margin, where margin shrinks over time.
+- Early phase: wide margin, low lambda -> broad exploration
+- Late phase: narrow margin, high lambda -> focused exploitation
+
+This transforms a discrete minimax problem into a smoother optimization
+landscape that SA can navigate more effectively.
 """
 import numpy as np
 import time
@@ -15,7 +18,7 @@ def solve(n, seed=42):
     rng = np.random.RandomState(seed)
     deadline = time.time() + 44
 
-    # Quick init selection
+    # Quick init selection from QR constructions
     best_ind = None
     best_m = float('inf')
     for p in _primes_near(2 * n, 5) + [3, 5, 7]:
@@ -96,21 +99,19 @@ def _sa(ind_A, n, rng, deadline):
 
     lo = 2
     hi = min(4 * n + 1, clen)
-    slc = conv[lo:hi]  # view into conv
+    slc = conv[lo:hi]
 
     cur_max = float(slc.max())
     best_max = cur_max
     best_ind = ind_A.copy()
 
-    # Adaptive penalty parameters
-    margin = 10.0
-    lam = 0.02
+    # Initial penalty params (will be updated adaptively)
+    margin = 20.0
+    lam = 0.005
     threshold = cur_max - margin
 
-    # Compute initial objective
     excess = np.maximum(slc - threshold, 0.0)
-    cur_penalty = float(np.sum(excess * excess))
-    cur_obj = cur_max + lam * cur_penalty
+    cur_obj = cur_max + lam * float(np.sum(excess * excess))
 
     T0 = 5.0
     Tf = 0.0001
@@ -129,9 +130,9 @@ def _sa(ind_A, n, rng, deadline):
             progress = min(el / budget, 1.0)
             T = T0 * np.exp(log_ratio * progress)
 
-            # Adaptive: increase lambda and decrease margin over time
-            lam = 0.01 + 0.04 * progress  # 0.01 -> 0.05
-            margin = 12.0 - 8.0 * progress  # 12 -> 4
+            # Adaptive penalty schedule
+            lam = 0.005 + 0.095 * progress  # 0.005 -> 0.1
+            margin = 20.0 - 18.0 * progress  # 20 -> 2
 
             ais = rng.randint(0, n, size=batch)
             bis = rng.randint(0, n, size=batch)
@@ -144,7 +145,6 @@ def _sa(ind_A, n, rng, deadline):
         eb = min(alen, clen - b)
         ea = min(alen, clen - a)
 
-        # Apply delta in-place
         if eb > 0:
             conv[b:b+eb] += ind_B[:eb]
             conv[b:b+eb] -= ind_A[:eb]
@@ -161,8 +161,7 @@ def _sa(ind_A, n, rng, deadline):
         # Compute new objective
         new_max = float(slc.max())
         excess = np.maximum(slc - threshold, 0.0)
-        new_penalty = float(np.sum(excess * excess))
-        new_obj = new_max + lam * new_penalty
+        new_obj = new_max + lam * float(np.sum(excess * excess))
         d = new_obj - cur_obj
 
         if d <= 0 or u < np.exp(-d / max(T, 1e-12)):
@@ -170,13 +169,11 @@ def _sa(ind_A, n, rng, deadline):
             ind_B[a] = 1.0; ind_B[b] = 0.0
             cur_obj = new_obj
             cur_max = new_max
-            cur_penalty = new_penalty
             Ae[ai] = b; Be[bi] = a
             if cur_max < best_max:
                 best_max = cur_max
                 best_ind = ind_A.copy()
         else:
-            # Revert
             if s < clen: conv[s] -= 2.0
             if da < clen: conv[da] += 1.0
             if db < clen: conv[db] += 1.0
@@ -187,13 +184,11 @@ def _sa(ind_A, n, rng, deadline):
                 conv[b:b+eb] -= ind_B[:eb]
                 conv[b:b+eb] += ind_A[:eb]
 
-        # Periodically update threshold
         iters_since_update += 1
         if iters_since_update >= update_every:
             threshold = best_max - margin
             excess = np.maximum(slc - threshold, 0.0)
-            cur_penalty = float(np.sum(excess * excess))
-            cur_obj = cur_max + lam * cur_penalty
+            cur_obj = cur_max + lam * float(np.sum(excess * excess))
             iters_since_update = 0
 
     return best_ind
